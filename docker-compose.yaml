@@ -1,12 +1,13 @@
-# Jetson: Drive-JEPA closed loop, three containers from the same image (rover_collector is not touched):
+# Jetson: Drive-JEPA closed loop, four containers from the same image (rover_collector is not touched):
 #   navigator   Vicon -> /drive_jepa/goals (intention)                     (CPU)
 #   inference   frames + Vicon + goals -> /drive_jepa/trajectory          (GPU)
 #   controller  trajectory + Vicon -> /toki/cmd_vel, safety stops          (CPU, 20 Hz)
+#   monitor     live view in the browser, http://<jetson-ip>:8081 (only listens)
 # They run next to the `sensors` service of rover_collector (camera + recording).
 # The rover_collector `collect` driver must NOT run at the same time (two drivers on /toki/cmd_vel).
 #
-#   docker compose build                    # see docker/Dockerfile: base image to check first
-#   docker compose up                       # ALL THREE (Ctrl+C stops all; the controller sends zero to the motors)
+#   docker compose build                    # see docker/Dockerfile (JetPack 7.2: torch cu132; variant B = ROS jazzy)
+#   docker compose up                       # ALL (Ctrl+C stops all; the controller sends zero to the motors)
 #   docker compose up inference controller  # without the navigator (inference.yaml command_source: fixed / topic)
 #   docker compose up inference             # only the inference (e.g. with the controller in dry run elsewhere)
 #   docker compose run --rm inference python3 tools/benchmark_latency.py \
@@ -18,8 +19,9 @@ x-common: &common
     dockerfile: docker/Dockerfile
     args:
       BASE_IMAGE: "${BASE_IMAGE:-ros:humble-ros-base}"
+      ROS: "${ROS:-humble}"                                         # B: jazzy (with BASE_IMAGE ros:jazzy-ros-base)
       INSTALL_ROS: "${INSTALL_ROS:-0}"
-      TORCH_INDEX: "${TORCH_INDEX:-}"
+      TORCH_INDEX: "${TORCH_INDEX:-https://download.pytorch.org/whl/cu132}"   # JetPack 7.2 = CUDA 13.2
   image: rover_inference:latest
   network_mode: host
   stdin_open: true
@@ -35,9 +37,11 @@ services:
   inference:
     <<: *common
     runtime: nvidia                           # GPU of the Jetson inside the container
+    ipc: host                                 # as the NVIDIA examples for PyTorch containers
     environment:
       <<: *ros
       NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: all
     volumes:
       - ./config:/ws/config                   # edit config/*.yaml without rebuilding
       - ./test:/ws/test
@@ -61,3 +65,12 @@ services:
       - ./config:/ws/config
       - ${COLLECTOR_MAPS:-../rover_collector/maps}:/maps:ro
     command: python3 -m rover_inference.navigator_node --ros-args -p config:=/ws/config/navigator.yaml
+
+  monitor:                                    # live view in the browser: http://<jetson-ip>:8081 (only listens)
+    <<: *common
+    environment: *ros
+    volumes:
+      - ./config:/ws/config
+      - ./tools:/ws/tools                     # live_view.py can be changed without rebuilding
+      - ${COLLECTOR_MAPS:-../rover_collector/maps}:/maps:ro
+    command: python3 tools/live_view.py --port 8081

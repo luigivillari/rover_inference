@@ -50,7 +50,8 @@ in the world with it.
   the first tests), or `fixed`;
 - `cmd_vel.angular.z = w x cmd_w_scale` (2.2, as the data collection: the tracks slip);
 - safety, same rules and same map file as rover_collector: no fresh Vicon pose -> zero (resumes);
-  outline outside the geofence / closer than 1 cm to an obstacle / battery < 10.5 V -> STOP (latched);
+  outline closer than `fence_gap` (1 cm) to the bounds / closer than `stop_gap` to an obstacle / battery
+  < 10.5 V -> STOP (latched; bounds and obstacles separate since 2026-11-24);
   model: no prediction or older than 1 s, rover > 0.20 m from the predicted path, path ending, predicted
   speed ~0 -> brake and wait for the next prediction;
 - every stop and brake is counted: SUMMARY in the log and `/drive_jepa/summary` (closed-loop metrics:
@@ -71,6 +72,18 @@ is the model's job.
 - goal reached within 0.30 m -> published at once; otherwise re-published at 2 Hz; no fresh Vicon pose ->
   nothing published; SUMMARY (goals reached and when) in the log and `/drive_jepa/navigator_summary`.
 
+## Live view (monitor)
+
+`docker compose up` also starts `monitor`: open **http://<jetson-ip>:8081** (http://192.168.27.108:8081) in
+the PC browser. It only listens. It shows the arena with the obstacles of the controller's safety map
+(unknown to model and navigator), the rover and its trail, the trajectory the model is predicting now
+(blue, anchored at the pose of its frame) and the previous ones (faded), the goal chain with the reach
+radius and the look-ahead point of the command (yellow diamond), the camera image (2 Hz), and the numbers:
+command, controller state, goals reached, distance to the goal, speed in the model status, model rate /
+inference time / age of the prediction, motor commands (and DRY RUN), Vicon age, battery, SUMMARY; a strip
+chart of v and w over the last 20 s shows oscillations at a glance. `tools/live_view.py --fake` = synthetic
+data without ROS (to check the page). `tools/` is mounted: changes to the page need no rebuild.
+
 ## Files
 
 ```
@@ -90,6 +103,7 @@ rover_inference/
 config/inference.yaml  config/controller.yaml  config/navigator.yaml
 tools/replay_bag.py        recorded bag -> pipeline -> compared with the extracted training samples
 tools/benchmark_latency.py time per prediction, fp16 / bf16 vs fp32
+tools/live_view.py         live view in the browser (monitor service, port 8081)
 test/                      no ROS, no GPU: python3 -m pytest -q test/
 docker/  docker-compose.yaml
 ```

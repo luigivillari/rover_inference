@@ -143,3 +143,21 @@ def test_walls_and_rotated_boxes_as_in_the_collector():
     assert abs(pose_gaps(smap, o, np.array([1.0, 0.75, 0.0]))[1] - (0.25 - 0.10 - 0.02)) < 1e-9
     # box rotated 90 deg: its 0.4 m side along y -> half width 0.1 along x
     assert abs(pose_gaps(smap, o, np.array([2.5, 0.0, 0.0]))[1] - (0.5 - 0.10 - 0.10)) < 1e-9
+
+
+def test_fence_and_obstacle_gaps_are_separate():
+    """2026-11-24: bounds stop at fence_gap, obstacles at stop_gap (before: one stop_gap for both)."""
+    smap = SafetyMap({"bounds": ARENA["bounds"],
+                      "obstacles": [{"type": "box", "center": [1.0, 0.0], "size": [0.2, 0.2], "yaw_deg": 0}]})
+    p = FollowerParams(fence_gap=0.01, stop_gap=0.02)
+    f = Follower(p, smap)
+    f.set_prediction(ideal_prediction(reference(), np.zeros(3), 0.0))
+    # 1.5 cm from the box: obstacle stop (2 cm)
+    assert f.update(0.0, np.array([0.785, 0.0, 0.0])).state.startswith("stopped: too close to an obstacle")
+    # 1.5 cm from the bounds (x_max 6.0): no stop with fence_gap 1 cm; 0.5 cm: geofence (not "obstacle")
+    g = Follower(p, smap)
+    g.set_prediction(ideal_prediction(reference(), np.zeros(3), 0.0))
+    assert not g.update(0.0, np.array([5.885, 0.0, 0.0])).state.startswith("stopped")
+    assert g.update(0.05, np.array([5.895, 0.0, 0.0])).state == "stopped: geofence"
+    s = g.summary()
+    assert abs(s["min_fence_gap"] - 0.005) < 1e-9 and s["min_obstacle_gap"] > 4.0

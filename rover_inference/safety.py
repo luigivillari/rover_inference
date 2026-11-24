@@ -6,6 +6,7 @@ footprint.py: rectangle outline) used by the data-collection driver for its stop
 the rover with the SAME rules on the SAME map file (maps/lab_latest.yaml of rover_collector):
   - geofence: any point of the outline outside the arena bounds
   - obstacle: outline closer than stop_gap (1 cm) to an obstacle or to the bounds
+    (2026-11-24: bounds and obstacles separated in follower.py, fence_gap / stop_gap)
 The model never sees the map: this is only the safety net (and every stop is counted as an intervention).
 """
 import math
@@ -101,3 +102,8 @@ def pose_gaps(smap, outline, pose):
     """(gap to the geofence only, gap to obstacles or geofence) of the rover outline [m]; < 0 = overlap."""
     pts = outline.world(pose)
     return float(smap.clearance(pts, obstacles=False).min()), float(smap.clearance(pts).min())
+
+
+def obstacle_gap(smap, outline, pose):
+    """Gap of the rover outline to the obstacles only (bounds excluded) [m]; inf without obstacles."""
+    return float(smap.clearance(outline.world(pose), bounds=False).min())

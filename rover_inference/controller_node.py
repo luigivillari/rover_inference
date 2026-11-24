@@ -117,7 +117,8 @@ class ControllerNode(Node):
         self.get_logger().info(
             f"SUMMARY: driven {s['distance']:.1f} m in {s['time_running']:.0f} s | predictions used "
             f"{s['predictions_used']} (mean age {s['mean_prediction_age_ms']:.0f} ms) | min gap "
-            f"{s['min_gap'] * 100:.1f} cm | max distance from the predicted path {s['max_cross_track'] * 100:.1f} cm | "
+            f"{s['min_gap'] * 100:.1f} cm (obstacles {s['min_obstacle_gap'] * 100:.1f}, bounds "
+            f"{s['min_fence_gap'] * 100:.1f}) | max distance from the predicted path {s['max_cross_track'] * 100:.1f} cm | "
             f"brakes: {holds} | safety stop: {s['latched'] or 'none'}")
 
     def stop(self):

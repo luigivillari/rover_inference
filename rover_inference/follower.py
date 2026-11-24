@@ -13,7 +13,7 @@ fast to go), capped at v_max; 'fixed' = v_fixed.
 
 Safety, the same rules as rover_collector Collector.update:
   no fresh Vicon pose (> pose_timeout)         -> zero at once, resume when it is back
-  outline outside the geofence                 -> STOP (latched)
+  outline closer than fence_gap to the bounds  -> STOP (latched, "geofence")
   outline closer than stop_gap to an obstacle  -> STOP (latched)
   battery below min_battery_v                  -> STOP (latched)
 and for the model (brake with the acceleration limit, resume with the next good prediction):
@@ -28,7 +28,7 @@ from dataclasses import asdict, dataclass, field, fields
 import numpy as np
 
 from .ego import to_world
-from .safety import Outline, pose_gaps
+from .safety import Outline, obstacle_gap, pose_gaps
 
 
 @dataclass
@@ -51,7 +51,8 @@ class FollowerParams:
     min_path_ahead: float = 0.10       # m of predicted path ahead of the rover
     half_length: float = 0.10          # rover outline from the Vicon origin
     half_width: float = 0.10
-    stop_gap: float = 0.01             # m, as the collector
+    stop_gap: float = 0.01             # m to an OBSTACLE, as the collector
+    fence_gap: float = 0.01            # m to the arena bounds (2026-11-24: separate from stop_gap)
     min_battery_v: float = 10.5        # 0 = off
 
     @classmethod
@@ -121,6 +122,7 @@ class Follower:
         self._holding = None                # reason of the current brake (a new reason counts once)
         self._last_seq = None
         self.stats = {"time_running": 0.0, "distance": 0.0, "predictions_used": 0, "min_gap": math.inf,
+                      "min_obstacle_gap": math.inf, "min_fence_gap": math.inf,
                       "max_cross_track": 0.0, "holds": {}, "hold_time": {}, "latched": None,
                       "prediction_age_sum": 0.0, "control_steps": 0}
 
@@ -164,11 +166,18 @@ class Follower:
         gap = math.inf
         if self.map is not None:
             gap_fence, gap = pose_gaps(self.map, self.outline, pose)
+            gap_obst = obstacle_gap(self.map, self.outline, pose)
             self.stats["min_gap"] = min(self.stats["min_gap"], gap)
-            if gap_fence < 0:
+            self.stats["min_obstacle_gap"] = min(self.stats["min_obstacle_gap"], gap_obst)
+            self.stats["min_fence_gap"] = min(self.stats["min_fence_gap"], gap_fence)
+            # if gap_fence < 0:
+            #     return self._latch("geofence", gap)
+            # if gap < p.stop_gap:
+            #     return self._latch(f"too close to an obstacle (gap {gap:.3f} m)", gap)
+            if gap_fence < p.fence_gap:                    # bounds and obstacles separated (2026-11-24)
                 return self._latch("geofence", gap)
-            if gap < p.stop_gap:
-                return self._latch(f"too close to an obstacle (gap {gap:.3f} m)", gap)
+            if gap_obst < p.stop_gap:
+                return self._latch(f"too close to an obstacle (gap {gap_obst:.3f} m)", gap)
 
         pr = self.pred
         if pr is None:
