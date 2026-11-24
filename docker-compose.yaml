@@ -1,11 +1,13 @@
-# Jetson: Drive-JEPA closed loop, two containers from the same image (rover_collector is not touched):
+# Jetson: Drive-JEPA closed loop, three containers from the same image (rover_collector is not touched):
+#   navigator   Vicon -> /drive_jepa/goals (intention)                     (CPU)
 #   inference   frames + Vicon + goals -> /drive_jepa/trajectory          (GPU)
 #   controller  trajectory + Vicon -> /toki/cmd_vel, safety stops          (CPU, 20 Hz)
 # They run next to the `sensors` service of rover_collector (camera + recording).
 # The rover_collector `collect` driver must NOT run at the same time (two drivers on /toki/cmd_vel).
 #
 #   docker compose build                    # see docker/Dockerfile: base image to check first
-#   docker compose up                       # BOTH (Ctrl+C stops both; the controller sends zero to the motors)
+#   docker compose up                       # ALL THREE (Ctrl+C stops all; the controller sends zero to the motors)
+#   docker compose up inference controller  # without the navigator (inference.yaml command_source: fixed / topic)
 #   docker compose up inference             # only the inference (e.g. with the controller in dry run elsewhere)
 #   docker compose run --rm inference python3 tools/benchmark_latency.py \
 #       --checkpoint /checkpoints/best.pt --rover-finetune /rover_finetune
@@ -51,3 +53,11 @@ services:
       - ./config:/ws/config
       - ${COLLECTOR_MAPS:-../rover_collector/maps}:/maps:ro            # same map files as the data collection
     command: python3 -m rover_inference.controller_node --ros-args -p config:=/ws/config/controller.yaml
+
+  navigator:
+    <<: *common
+    environment: *ros
+    volumes:
+      - ./config:/ws/config
+      - ${COLLECTOR_MAPS:-../rover_collector/maps}:/maps:ro
+    command: python3 -m rover_inference.navigator_node --ros-args -p config:=/ws/config/navigator.yaml

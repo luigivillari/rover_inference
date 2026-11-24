@@ -1,0 +1,33 @@
+# Navigator of the Drive-JEPA tests: chain of goals -> /drive_jepa/goals (the inference makes the command).
+# Mounted in the container: edit here, no rebuild needed. Used when inference.yaml has command_source: goals.
+
+map_file: /maps/lab_latest.yaml   # same map as the controller: goals checked free / inside the arena
+rate_hz: 2.0                      # chain re-published at this rate (and at once when a goal is reached)
+pose_timeout: 0.5                 # s without a Vicon pose -> nothing published
+
+navigator:
+  mode: list                      # list (fixed route below, repeatable) | random (roam, next goal 2-5 m ahead)
+  reach_radius: 0.30              # m: goal reached when the rover is this close
+  chain_length: 3                 # goals sent: current + next ones (look-ahead 1.5 m uses the first two)
+  loop: true                      # list: start again from the first goal
+  # random: same parameters as rover_collector config/collector.yaml (direct variant)
+  goal_min_dist: 2.0
+  goal_max_dist: 5.0
+  goal_cone_deg: 75.0
+  goal_clearance: 0.15            # m of free space around the rover outline at the goal
+  bounds_margin: 0.40             # m inside the arena bounds
+  seed: 0                         # random: same seed + same start = same goals
+
+# list mode: world (Vicon) coordinates [x, y] in m, in order. EXAMPLE values: set them on the layout in use
+# (the node refuses goals on / too close to an obstacle or outside the arena)
+goals:
+  - [1.0, 0.0]
+  - [4.0, 0.5]
+  - [4.0, -1.0]
+  - [1.0, -1.0]
+
+topics:
+  pose: /vicon/toki/toki
+  pose_type: TransformStamped
+  goals: /drive_jepa/goals
+  summary: /drive_jepa/navigator_summary
