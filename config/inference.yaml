@@ -1,0 +1,37 @@
+# Drive-JEPA inference on the rover (Jetson). Mounted in the container: edit here, no rebuild needed.
+
+model:
+  runner: network                 # network | constant_velocity (no model: only to check topics and timing)
+  checkpoint: /checkpoints/best.pt                # copied from the GPU VM (runs/<run>/best.pt), not in git
+  rover_finetune: /rover_finetune                 # rover_finetune folder (model code + base weights), read-only
+  # navsim_dir: /rover_finetune/third_party/navsim_v1             # default
+  # weights: /rover_finetune/weights/drive_jepa_pf_vitl_weights.pt # default
+  device: cuda
+  precision: fp16                 # fp16 | bf16 | fp32 (offline evaluation was fp32: compare with tools/benchmark_latency.py)
+
+pipeline:                         # every value as in the training data (extract_samples.py v3) unless noted
+  camera_latency: 0.017           # s, image stamp - time the image was taken
+  frame_dt: 0.5                   # s between the two frames
+  max_frame_offset: 0.05          # s
+  time_mode: aligned              # aligned (Vicon stamps on the camera clock, as training) | receive
+  dynamics: central               # central (as training, frame ~0.3 s old) | backward (no wait): see tools/replay_bag.py
+  h_vel: 0.1
+  h_acc: 0.25
+  smooth: 0.05
+  max_pose_gap: 0.1
+  command_source: goals           # goals (navigator, training rule) | topic | fixed | self
+  command_fixed: straight         # used by command_source: fixed
+  command_timeout: 1.0            # s, command_source: topic
+  route_lookahead: 1.5            # m, training value
+  route_threshold: 0.1            # training value
+
+topics:
+  camera: /camera/image_raw/compressed
+  pose: /vicon/toki/toki
+  pose_type: TransformStamped     # TransformStamped | PoseStamped
+  goals: /drive_jepa/goals
+  command: /drive_jepa/command
+  trajectory: /drive_jepa/trajectory
+  info: /drive_jepa/info
+
+max_rate_hz: 10                   # upper limit; the real rate is set by the inference time

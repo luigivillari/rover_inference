@@ -1,0 +1,40 @@
+# Controller of the Drive-JEPA tests: predicted trajectory -> /toki/cmd_vel. Mounted: no rebuild needed.
+
+enabled: false                    # false = dry run (publishes on cmd_vel_dry, the rover does NOT move)
+                                  # true  = drives the rover: rover_collector `collect` must NOT be running
+cmd_w_scale: 2.2                  # as rover_collector config/collector.yaml (tracks slip, toki with the camera box)
+control_rate: 20.0                # Hz
+map_file: /maps/lab_latest.yaml   # rover_collector map of the layout in use: geofence + obstacle stop
+require_map: true
+
+follower:
+  pose_timeout: 0.3               # s without a Vicon pose -> zero, resume when it returns
+  prediction_timeout: 1.0         # s: newest prediction older than this -> brake and wait
+  speed: model                    # model (speed of the predicted trajectory) | fixed
+  v_fixed: 0.20
+  v_max: 0.25                     # m/s cap for the first tests (training data 0.20-0.35)
+  v_stop: 0.03
+  speed_horizon: 1.0
+  accel_max: 0.5
+  w_max: 1.5
+  w_accel_max: 4.0
+  r_min_ctrl: 0.20
+  lookahead_gain: 1.0
+  lookahead_min: 0.15
+  lookahead_max: 0.35
+  max_cross_track: 0.20
+  min_path_ahead: 0.10
+  half_length: 0.10               # rover outline (20 x 20 cm) from the Vicon origin
+  half_width: 0.10
+  stop_gap: 0.01                  # m, safety stop as in the data collection
+  min_battery_v: 10.5
+
+topics:
+  pose: /vicon/toki/toki
+  pose_type: TransformStamped
+  battery: /toki/battery
+  trajectory: /drive_jepa/trajectory
+  cmd_vel: /toki/cmd_vel
+  cmd_vel_dry: /drive_jepa/cmd_vel_dry
+  state: /drive_jepa/controller_state
+  summary: /drive_jepa/summary

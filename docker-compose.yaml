@@ -1,0 +1,53 @@
+# Jetson: Drive-JEPA closed loop, two containers from the same image (rover_collector is not touched):
+#   inference   frames + Vicon + goals -> /drive_jepa/trajectory          (GPU)
+#   controller  trajectory + Vicon -> /toki/cmd_vel, safety stops          (CPU, 20 Hz)
+# They run next to the `sensors` service of rover_collector (camera + recording).
+# The rover_collector `collect` driver must NOT run at the same time (two drivers on /toki/cmd_vel).
+#
+#   docker compose build                    # see docker/Dockerfile: base image to check first
+#   docker compose up                       # BOTH (Ctrl+C stops both; the controller sends zero to the motors)
+#   docker compose up inference             # only the inference (e.g. with the controller in dry run elsewhere)
+#   docker compose run --rm inference python3 tools/benchmark_latency.py \
+#       --checkpoint /checkpoints/best.pt --rover-finetune /rover_finetune
+#   docker compose run --rm inference python3 -m pytest -q test/
+x-common: &common
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+    args:
+      BASE_IMAGE: "${BASE_IMAGE:-ros:humble-ros-base}"
+      INSTALL_ROS: "${INSTALL_ROS:-0}"
+      TORCH_INDEX: "${TORCH_INDEX:-}"
+  image: rover_inference:latest
+  network_mode: host
+  stdin_open: true
+  tty: true
+  stop_signal: SIGINT                         # Ctrl+C path: the controller publishes a zero command
+  stop_grace_period: 5s
+
+x-ros: &ros
+  ROS_DOMAIN_ID: "3"                          # same as the Pi, the Vicon PC and rover_collector
+  FASTDDS_BUILTIN_TRANSPORTS: UDPv4           # containers on the same host: no shared memory
+
+services:
+  inference:
+    <<: *common
+    runtime: nvidia                           # GPU of the Jetson inside the container
+    environment:
+      <<: *ros
+      NVIDIA_VISIBLE_DEVICES: all
+    volumes:
+      - ./config:/ws/config                   # edit config/*.yaml without rebuilding
+      - ./test:/ws/test
+      - ${ROVER_FINETUNE_DIR:-../rover_finetune}:/rover_finetune:ro   # model code + base weights (1.24 GB)
+      - ${CHECKPOINTS_DIR:-./checkpoints}:/checkpoints:ro             # best.pt copied from the GPU VM
+      - ${DATA_DIR:-./data}:/data:ro                                  # optional: sessions / bags for tests
+    command: python3 -m rover_inference.node --ros-args -p config:=/ws/config/inference.yaml
+
+  controller:
+    <<: *common
+    environment: *ros
+    volumes:
+      - ./config:/ws/config
+      - ${COLLECTOR_MAPS:-../rover_collector/maps}:/maps:ro            # same map files as the data collection
+    command: python3 -m rover_inference.controller_node --ros-args -p config:=/ws/config/controller.yaml
